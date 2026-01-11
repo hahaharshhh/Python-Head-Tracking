@@ -1,5 +1,7 @@
 import cv2
 import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 import numpy as np
 import pyautogui
 import time
@@ -13,24 +15,28 @@ COOLDOWN_SECONDS = 2.0    # Time to wait between triggers
 GESTURE_HOLD_TIME = 0.5   # Seconds hand must be at ear to trigger
 # ---------------------
 
-# Initialize MediaPipe solutions
-mp_face_mesh = mp.solutions.face_mesh
-mp_hands = mp.solutions.hands
-
-# Setup Face Mesh
-face_mesh = mp_face_mesh.FaceMesh(
-    max_num_faces=1,
-    refine_landmarks=True,
-    min_detection_confidence=0.5, 
+# Initialize MediaPipe tasks
+base_options_face = python.BaseOptions(model_asset_path='face_landmarker.task')
+face_options = vision.FaceLandmarkerOptions(
+    base_options=base_options_face,
+    num_faces=1,
+    output_face_blendshapes=True,
+    output_facial_transformation_matrixes=True,
+    min_face_detection_confidence=0.5,
+    min_face_presence_confidence=0.5,
     min_tracking_confidence=0.5
 )
+face_landmarker = vision.FaceLandmarker.create_from_options(face_options)
 
-# Setup Hand Tracking
-hands = mp_hands.Hands(
-    max_num_hands=2,
-    min_detection_confidence=0.5,
+base_options_hand = python.BaseOptions(model_asset_path='hand_landmarker.task')
+hand_options = vision.HandLandmarkerOptions(
+    base_options=base_options_hand,
+    num_hands=2,
+    min_hand_detection_confidence=0.5,
+    min_hand_presence_confidence=0.5,
     min_tracking_confidence=0.5
 )
+hand_landmarker = vision.HandLandmarker.create_from_options(hand_options)
 
 # Initialize Webcam
 cap = cv2.VideoCapture(CAMERA_ID)
@@ -105,8 +111,9 @@ while cap.isOpened():
     h, w, _ = image.shape
     
     # Process Face and Hands
-    face_results = face_mesh.process(rgb_image)
-    hand_results = hands.process(rgb_image)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_image)
+    face_results = face_landmarker.detect(mp_image)
+    hand_results = hand_landmarker.detect(mp_image)
     
     trigger_detected = False
     trigger_reason = "Scanning..."
@@ -119,41 +126,41 @@ while cap.isOpened():
     # --------------------------
     # 1. FACE LOGIC
     # --------------------------
-    if face_results.multi_face_landmarks:
-        for face_landmarks in face_results.multi_face_landmarks:
-            # Eyes
-            left_eye = face_landmarks.landmark[33]
-            right_eye = face_landmarks.landmark[263]
-            pt1 = (int(left_eye.x * w), int(left_eye.y * h))
-            pt2 = (int(right_eye.x * w), int(right_eye.y * h))
-            
-            # Ears
-            l_ear = face_landmarks.landmark[234]
-            r_ear = face_landmarks.landmark[454]
-            left_ear_coords = (int(l_ear.x * w), int(l_ear.y * h))
-            right_ear_coords = (int(r_ear.x * w), int(r_ear.y * h))
+    if face_results.face_landmarks:
+        face_landmarks = face_results.face_landmarks[0]  # First face
+        # Eyes
+        left_eye = face_landmarks[33]
+        right_eye = face_landmarks[263]
+        pt1 = (int(left_eye.x * w), int(left_eye.y * h))
+        pt2 = (int(right_eye.x * w), int(right_eye.y * h))
+        
+        # Ears
+        l_ear = face_landmarks[234]
+        r_ear = face_landmarks[454]
+        left_ear_coords = (int(l_ear.x * w), int(l_ear.y * h))
+        right_ear_coords = (int(r_ear.x * w), int(r_ear.y * h))
 
-            # Visuals: Eye Line
-            cv2.line(image, pt1, pt2, (255, 255, 255), 1)
-            # Visuals: Ear Dots
-            cv2.circle(image, left_ear_coords, 5, (255, 200, 0), -1) 
-            cv2.circle(image, right_ear_coords, 5, (255, 200, 0), -1)
+        # Visuals: Eye Line
+        cv2.line(image, pt1, pt2, (255, 255, 255), 1)
+        # Visuals: Ear Dots
+        cv2.circle(image, left_ear_coords, 5, (255, 200, 0), -1) 
+        cv2.circle(image, right_ear_coords, 5, (255, 200, 0), -1)
 
-            # Check Tilt
-            angle = calculate_angle(pt1, pt2)
-            if abs(angle) > TILT_THRESHOLD:
-                trigger_detected = True
-                trigger_reason = f"Head Tilt: {int(angle)} deg"
+        # Check Tilt
+        angle = calculate_angle(pt1, pt2)
+        if abs(angle) > TILT_THRESHOLD:
+            trigger_detected = True
+            trigger_reason = f"Head Tilt: {int(angle)} deg"
 
     # --------------------------
     # 2. HAND LOGIC
     # --------------------------
     current_hand_near_ear = False
     
-    if hand_results.multi_hand_landmarks and left_ear_coords:
-        for hand_landmarks in hand_results.multi_hand_landmarks:
+    if hand_results.hand_landmarks and left_ear_coords:
+        for hand_landmarks in hand_results.hand_landmarks:
             # Tip of Index Finger
-            tip = hand_landmarks.landmark[8] 
+            tip = hand_landmarks[8] 
             tip_coords = (int(tip.x * w), int(tip.y * h))
             
             dist_left = distance(tip_coords, left_ear_coords)
