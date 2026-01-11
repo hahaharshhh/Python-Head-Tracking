@@ -9,9 +9,9 @@ import math
 
 # --- CONFIGURATION ---
 CAMERA_ID = 0             # 0 is usually the default webcam
-TILT_THRESHOLD = 15       # Angle in degrees to trigger pause
+TILT_THRESHOLD = 12       # Angle in degrees to trigger pause
 HAND_EAR_DIST = 60        # Distance (pixels) to consider hand is touching ear
-COOLDOWN_SECONDS = 2.0    # Time to wait between triggers
+COOLDOWN_SECONDS = 1.0    # Time to wait between triggers
 GESTURE_HOLD_TIME = 0.5   # Seconds hand must be at ear to trigger
 # ---------------------
 
